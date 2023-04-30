@@ -9,10 +9,10 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Kazik" />
+<meta name="author" content="Kazimierz Czarnocki" />
 
 
-<title>Estimation of theta and delta</title>
+<title>Hyperbolic function fitting to respondent’s level data</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -355,8 +355,9 @@ pre code {
 
 
 
-<h1 class="title toc-ignore">Estimation of theta and delta</h1>
-<h4 class="author">Kazik</h4>
+<h1 class="title toc-ignore">Hyperbolic function fitting to respondent’s
+level data</h1>
+<h4 class="author">Kazimierz Czarnocki</h4>
 <h4 class="date">02.06.2021</h4>
 
 </div>
@@ -684,7 +685,7 @@ saemix.model &lt;- saemixModel(model = model1,
                             psi0  = matrix(c(1,1), ncol=2, dimnames =list(NULL, c(&quot;theta&quot;, &quot;delta&quot;)))
 )
 
-saemix.options &lt;- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545, save = FALSE)
+saemix.options &lt;- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545, print=FALSE, save = FALSE)
 
 saemix.fit1    &lt;- saemix(saemix.model, saemix.data, saemix.options)
 
