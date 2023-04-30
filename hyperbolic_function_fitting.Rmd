@@ -352,7 +352,7 @@ saemix.model <- saemixModel(model = model1,
                             psi0  = matrix(c(1,1), ncol=2, dimnames =list(NULL, c("theta", "delta")))
 )
 
-saemix.options <- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545, print=FALSE, save = FALSE)
+saemix.options <- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545)
 
 saemix.fit1    <- saemix(saemix.model, saemix.data, saemix.options)
 

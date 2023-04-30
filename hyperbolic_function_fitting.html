@@ -685,7 +685,7 @@ saemix.model &lt;- saemixModel(model = model1,
                             psi0  = matrix(c(1,1), ncol=2, dimnames =list(NULL, c(&quot;theta&quot;, &quot;delta&quot;)))
 )
 
-saemix.options &lt;- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545, print=FALSE, save = FALSE)
+saemix.options &lt;- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545)
 
 saemix.fit1    &lt;- saemix(saemix.model, saemix.data, saemix.options)
 

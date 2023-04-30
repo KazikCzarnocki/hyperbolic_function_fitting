@@ -1,0 +1,105 @@
+Nonlinear mixed-effects model fit by the SAEM algorithm
+-----------------------------------
+----          Data             ----
+-----------------------------------
+Object of class SaemixData
+    longitudinal data for use with the SAEM algorithm
+Dataset sample_long_cut 
+    Structured data: ip ~ sd | id 
+    Predictor: sd () 
+Dataset characteristics:
+    number of subjects:     378 
+    number of observations: 1864 
+    average/min/max nb obs: 4.93  /  3  /  5 
+First 10 lines of data:
+   id  sd   ip mdv cens occ ytype
+1   1   1 87.5   0    0   1     1
+2   1   5 87.5   0    0   1     1
+3   1  20 52.5   0    0   1     1
+4   1  50 12.5   0    0   1     1
+5   1 100  7.5   0    0   1     1
+6   2   1 87.5   0    0   1     1
+7   2   5 87.5   0    0   1     1
+8   2  20  2.5   0    0   1     1
+9   2  50  2.5   0    0   1     1
+10  2 100 87.5   0    0   1     1
+-----------------------------------
+----          Model            ----
+-----------------------------------
+Nonlinear mixed-effects model
+  Model function
+  Model type:  structural
+function(psi,id,sd){
+  theta <- psi[id,1]
+  delta <- psi[id,2]
+  sd <- sd[,1]
+  hy_fun <- (theta*75)/(1+delta*sd)
+  return(hy_fun)
+}
+<bytecode: 0x000001cf440a0a90>
+  Nb of parameters: 2 
+      parameter names:  theta delta 
+      distribution:
+     Parameter Distribution Estimated
+[1,] theta     normal       Estimated
+[2,] delta     normal       Estimated
+  Variance-covariance matrix:
+      theta delta
+theta     1     0
+delta     0     1
+  Error model: constant , initial values: a.1=1 
+    No covariate in the model.
+    Initial values
+             theta delta
+Pop.CondInit     1     1
+-----------------------------------
+----    Key algorithm options  ----
+-----------------------------------
+    Estimation of individual parameters (MAP)
+    Estimation of standard errors and linearised log-likelihood
+    Estimation of log-likelihood by importance sampling
+    Number of iterations:  K1=300, K2=100 
+    Number of chains:  1 
+    Seed:  632545 
+    Number of MCMC iterations for IS:  5000 
+    Simulations:
+        nb of simulated datasets used for npde:  1000 
+        nb of simulated datasets used for VPC:  100 
+    Input/output
+        save the results to a file:  TRUE 
+        save the graphs to files:  TRUE 
+        directory where results should be saved:  newdir 
+----------------------------------------------------
+----                  Results                   ----
+----------------------------------------------------
+-----------------  Fixed effects  ------------------
+----------------------------------------------------
+     Parameter Estimate SE    CV(%)
+[1,] theta      1.082   0.017 1.5  
+[2,] delta      0.076   0.004 5.3  
+[3,] a.1       22.700   0.436 1.9  
+----------------------------------------------------
+-----------  Variance of random effects  -----------
+----------------------------------------------------
+      Parameter    Estimate SE      CV(%)
+theta omega2.theta 0.0049   0.00589 120  
+delta omega2.delta 0.0016   0.00028  18  
+----------------------------------------------------
+------  Correlation matrix of random effects  ------
+----------------------------------------------------
+             omega2.theta omega2.delta
+omega2.theta 1            0           
+omega2.delta 0            1           
+----------------------------------------------------
+---------------  Statistical criteria  -------------
+----------------------------------------------------
+Likelihood computed by linearisation
+      -2LL= 17217.72 
+      AIC = 17227.72 
+      BIC = 17247.39 
+
+Likelihood computed by importance sampling
+      -2LL= 17307.43 
+      AIC = 17317.43 
+      BIC = 17337.11 
+----------------------------------------------------
