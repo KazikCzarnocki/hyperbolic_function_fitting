@@ -1,6 +1,6 @@
 ---
-title: "Estimation of theta and delta"
-author: "Kazik"
+title: "Hyperbolic function fitting to respondent's level data"
+author: "Kazimierz Czarnocki"
 date: "02.06.2021"
 output: rmarkdown::html_document
 ---
