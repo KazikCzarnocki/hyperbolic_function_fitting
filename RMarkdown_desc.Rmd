@@ -1,0 +1,599 @@
+---
+title: "Estimation of theta and delta"
+author: "Kazik"
+date: "02.06.2021"
+output: rmarkdown::html_document
+---
+
+# INTRODUCTION
+
+This note describe the process of fitting a non-linear function to sparse data.
+
+The fitted non-linear function is a utility function of a dictator in a dictator game 
+with other-regarding preferences as implied by the literature on social distance 
+discounting (e.g., Strombach, et al., 2014; Ma, Pei, & Jin, 2015).
+
+In the dictator game, the first player (the dictator) determines how to split 
+an endowment (such as a cash prize) between themselves and the second player (the recipient). 
+The dictator's action determines the endowment, which ranges from giving nothing 
+to giving all the endowment. The recipient has no influence over the outcome of 
+the game, which means the recipient plays a passive role.
+For more information on the dictator game see Leder & Schütz (2018).
+
+There are three main challenges:
+
+* Due to decision-theoretical foundation we are interested in estimating 
+the utility function for each participant. Thus, we cannot aggregate data.
+* Because we need to estimate utility function for each participant, the
+preceding research cannot inform this analysis (reported values were at aggregated 
+level). Moreover, sampled populations are different, so it would lead to biased results.
+* The data for each respondent are very sparse (only 5 points). Consequently,
+issues with optimization algorithms are expected.
+
+**Problem Description**
+
+Assume that Player 1's utility function is given by the equation 
+$U(\pi_1,\pi_2)=U(\pi_1)+\frac{\theta}{1+\delta*SD}*U(\pi_2)$, where:
+
+* $\pi_1$ is a payoff received by Player 1 (i.e., dictator)
+* $\pi_2$ is a payoff received by Player 2
+* $SD$ stands for Social Distance
+* $\delta$ and $\theta$ are parameters of hyperbolic function
+
+Because, this functional form is a substantive assumption we do not consider 
+any modifications to it. 
+
+Respondents were asked a series of five questions about their indifference points
+between $\pi_1$ and $\pi_2$ for social distances 1, 5, 20, 50, and 100.
+Consequently each indifference point point is such that 
+$U(\pi_1)=\frac{\theta}{1+\delta*SD}*U(\pi_2)$ for fixed $\pi_2$.
+
+Given that $\pi_1$, $\pi_2$, and $SD$ are known and that $U(x)=x$ (i.e., linear utility of money), 
+the problem boils down to finding 
+$f(\theta,\delta)=\frac{\theta}{1+\delta*SD}$.
+
+Substantively, why do we need $\delta$ and $\theta$?
+We need these parameters to obtain utility functions for every respondent.
+Such individual utility functions may be are later used to predict or model
+behaviour of individuals.
+
+# SET-UP
+
+```{r set-up, message=FALSE, warning=FALSE}
+#load packages
+library(tidyverse)
+library(readxl)
+library(minpack.lm)
+library(saemix)
+library(ggExtra)
+library(nls2)
+library(gamlss)
+library(conflicted)
+
+#solve conflicts
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
+
+#set directories
+dir_in  <- file.path(getwd(), "input")
+dir_out <- file.path(getwd(), "output")
+
+#set seed
+set.seed(48236)
+```
+
+# Data preparation
+
+First, load data set for analysis. 
+
+```{r}
+#data in long format
+data_long <- read.csv(file.path(dir_in, "data_set_utility_function_sdd.csv")) %>%
+  select(-X)
+#data in wide format
+data_wide <- pivot_wider(data_long, 
+                         id_cols = id,
+                         names_from = sd,
+                         values_from = ip)
+
+head(data_long)
+head(data_wide)
+```
+
+The variable "id" denotes a unique participant. 
+Each observation is characterized by the social distance "sd", and the indifference point "ip". 
+For each participant, we have 5 observations (i.e., points in ${\rm I\!R_+ \times I\!R_+}$). 
+However, in some cases due to missing "ip" values we have only 4 or 3 observations. 
+Visually, we want to fit the hyperbolic function to data like this:
+
+```{r, chunk-plot1, echo=FALSE}
+ggplot(filter(data_long, id==1)) +
+  geom_point(aes(x=sd, y=ip), size=2) +
+  labs(x="Social Distance", y="Indifference point")
+```
+
+# Gauss-Newton algorithm
+
+Because, we want to fit a non-linear function, we need to use a non-linear optimization method.
+The basis of methods used here is to find a solution by approximating a Hessian 
+using only 1st derivatives (it is relatively harder to compute 2nd derivatives).
+The simplest method of this type is the Gauss-Newton algorithm (Ruszczyński, 2004) 
+so let's start with it.
+The Gauss-Newton algorithm can be viewed as linearizing the nonlinear model, and then
+directly choosing the search direction (by approximating the Newton's method with 1st derivatives).
+
+To run our algorithms we need some starting values. Let's go with the simplest 
+possibility, where starting values are a singular vector (i.e., $\theta$=1 and $\delta$=1).
+
+
+
+```{r, chunk-est-gn, results='hide'}
+#Estimation of theta and delta by Gauss-Newton algorithm:
+
+N=length(data_wide$id)
+i=1
+
+theta_gn <- c(0)
+delta_gn <- c(0)
+
+repeat{
+  a <- filter(data_long, id==i)
+  b <- try(nls(ip ~ (theta*75)/(1+delta*sd), data=a,
+           start=c(theta=1, delta=1)))
+  c=ifelse(isTRUE(class(b)=="try-error"), 1, 0)
+  d <- summary(b)
+  
+  theta_gn[i]=ifelse(c==1, NA, d$coefficients[1,1])
+  delta_gn[i]=ifelse(c==1, NA, d$coefficients[2,1])
+
+i=i+1
+if(i>N){
+  break
+}
+}
+
+est_gn <- data.frame(data_wide$id, theta_gn, delta_gn)
+rm(N,i,a,b,c,d)
+
+#Remarks:
+#(1) Without "try()" the estimation using G-N algorithm
+#    would stop after the first error.
+```
+
+```{r, echo=FALSE}
+N=length(data_wide$id)
+a=filter(est_gn, is.na(theta_gn))
+n <- length(a$theta_gn)
+```
+
+The problem is that for `r n` participants the values were not found.
+That is, for `r round(n/N*100, digits=2)`% of participants in the sample.
+
+What is a source of this problem? 
+The Gauss-Newton algorithm performs poorly when the residuals at the solution are large (i.e., when the model does not fit data well).
+Moreover, it may fail to find a solution if initial values are far from it (i.e., the convergence is not guaranteed if the starting point is not in the neighborhood of the minimum).
+Before we move to other algorithm we may try to find better starting values.
+As discussed in the appendix simple approaches failed (see Appendix B).
+Obviously, these attempts are nor sophisticated, but finding good starting values is a lot of work, so it may be worth to try other algorithm instead.
+
+Thus, we need an algorithm that can find a solution even if it far from our initial parameters and performs better when the assumed model does not fit to data well.
+Such an algorithm is the Levenberg–Marquardt algorithm (Ruszczyński, 2004). 
+A idea of this algorithm is to  interpolate between the Gauss-Newton method and the gradient descent method.
+
+# Levenberg–Marquardt algorithm
+
+```{r}
+N=length(data_wide$id)
+i=1
+
+theta    <- c(0)
+delta    <- c(0)
+st.theta <- c(0)
+st.delta <- c(0)
+log_ll   <- c(0)
+res      <- matrix(0, ncol = 5, nrow = N)
+
+repeat{
+  a <- filter(data_long, id==i)
+  b <- nlsLM(ip ~ (theta*75)/(1+delta*sd), data=a,
+      start=c(theta=1, delta=1), 
+      control=nls.lm.control(maxiter = 1024), lower=c(0,0), upper=c(5,5))
+  c <- summary(b)
+  theta[i]   =c$coefficients[1,1]
+  delta[i]   =c$coefficients[2,1]
+  st.theta[i]=c$coefficients[1,2]
+  st.delta[i]=c$coefficients[2,2]
+  log_ll[i]  =logLik(b)
+  d <- residuals(b)
+  res[i,1]=d[1]
+  res[i,2]=d[2]
+  res[i,3]=d[3]
+  res[i,4]=d[4]
+  res[i,5]=d[5]
+i=i+1
+if(i>N){
+  break
+  }
+}
+
+#Remarks:
+#(1) Restrictions on parameters were added to avoid nonsensical values.
+#(2) L-M algorithm managed to estimate parameters for all respondents,
+#    so there was need to use "try()".
+```
+
+```{r, echo=FALSE}
+sample <- data.frame(data_wide, theta, st.theta, delta, st.delta, res, log_ll)
+   #rename columns containing residuals
+    names(sample)[names(sample) == "X1"] <- "error_1_nls"
+    names(sample)[names(sample) == "X2"] <- "error_2_nls"
+    names(sample)[names(sample) == "X3"] <- "error_3_nls"
+    names(sample)[names(sample) == "X4"] <- "error_4_nls"
+    names(sample)[names(sample) == "X5"] <- "error_5_nls"
+   #rename columns containing parameters
+    names(sample)[names(sample) == "theta"]    <- "theta_nls"
+    names(sample)[names(sample) == "st.theta"] <- "st.theta_nls"
+    names(sample)[names(sample) == "delta"]    <- "delta_nls"
+    names(sample)[names(sample) == "st.delta"] <- "st.delta_nls"
+   
+rm(a,b,c,d, theta, st.theta, delta, st.delta, res, log_ll)
+```
+
+Before we move forward lets investigate if parameters' values estimated by the L-M and G-N are the same (for those where G-N managed to estimate them). 
+
+```{r, results='hide'}
+a <- theta_gn - sample$theta_nls
+a <- a[!is.na(a)]
+
+#used algorithms only approximate values, so small differences are expected.
+b <- sum(a>-0.0001 & a<0.0001, na.rm = TRUE)
+```
+
+In `r round(b/length(a)*100, digits=2)`% both algorithms provided almost identical values.
+Thus, the provided fairly similar estimates.
+Moreover, because the G-N was limited at 50 iterations and L-M at 1024 iterations, we can assume that obtained estimates are as accurate as possible (i.e., increasing the number of iterations would not change them significantly).
+
+```{r, echo=FALSE}
+rm(a,b)
+```
+
+# Levenberg–Marquardt algorithm - problems
+
+Upon a more detailed investigation we can spot that estimated parameters 
+resulted, for some participants, in very peculiar functions.
+For example, we placed a constraint on $\delta$ and $\theta$ to avoid nonsensical fits like this one (it makes no sense form the substantive point of view, and it exists only because there are no observations for social distance $\in (20; 50)$):
+
+```{r, echo=FALSE}
+fun.1 <- function(x) 0.3/(1-0.03*x)
+
+ggplot()+
+  stat_function(fun = fun.1, colour="red")+
+  xlim(1,100) +
+  labs(x = "Social Distance", y="Indifference Point")
+```
+
+This is because we have a very limited information on each participant.
+It is not realistic to expect a good estimates for non-linear function with 2 parameters based on only 5 measurements. 
+What can we do? 
+A simple solution is to put some constrains on parameters (as already done in the code above), but it does not solve an underlying issue of small number of observations.
+One option is to use the SAEM algorithm.
+
+# SAEM algorithm
+
+The SAEM (Stochastic Approximation Expectation Maximisation) is a
+iterative and stochastic algorithm for calculating the maximum likelihood estimator in the general setting of incomplete data models. The underlying idea is to construct N Markov Chains (one for every participant) that converge to the conditional distributions,
+using at each step the complete data to calculate a new parameter vector (Comets, et al., 2017).
+In other words, (and slightly incorrectly) we can say that SAEM
+algorithm uses information on distribution to
+better estimate individual parameters.
+
+Because SAEM algorithm does not work well with outliers we exclude them:
+
+```{r, chunk-sample-cut, results='hide'}
+i=1
+j=0
+th <-c(0)
+repeat{
+  th[i+j*4]=sample$theta_nls[i]
+  th[i+1+j*4]=sample$theta_nls[i]
+  th[i+2+j*4]=sample$theta_nls[i]
+  th[i+3+j*4]=sample$theta_nls[i]
+  th[i+4+j*4]=sample$theta_nls[i]
+  i=i+1
+  j=j+1
+  if(i>N){
+    break
+  }
+}
+
+i=1
+j=0
+del <-c(0)
+repeat{
+  del[i+j*4]=sample$delta_nls[i]
+  del[i+1+j*4]=sample$delta_nls[i]
+  del[i+2+j*4]=sample$delta_nls[i]
+  del[i+3+j*4]=sample$delta_nls[i]
+  del[i+4+j*4]=sample$delta_nls[i]
+  i=i+1
+  j=j+1
+  if(i>N){
+    break
+  }
+}
+
+data <- data.frame(data_long, th, del) %>%
+  filter(th<3 & del<2 & !is.na(ip))
+
+sample_long_cut <- data %>% 
+  select(id, sd, ip, th, del)
+rm(data,th,del)
+
+sample_cut <- sample %>%
+  filter(theta_nls<3 & delta_nls<2)
+```
+
+Now we can move to parameter estimation:
+```{r, chunk-saem, results='hide'}
+saemix.data <- saemixData(name.data       = sample_long_cut,
+                          name.group      = "id",
+                          name.predictors = "sd",
+                          name.response   = "ip")
+
+model1 <- function(psi,id,sd){
+  theta <- psi[id,1]
+  delta <- psi[id,2]
+  sd <- sd[,1]
+  hy_fun <- (theta*75)/(1+delta*sd)
+  return(hy_fun)
+}
+
+saemix.model <- saemixModel(model = model1,
+                            psi0  = matrix(c(1,1), ncol=2, dimnames =list(NULL, c("theta", "delta")))
+)
+
+saemix.options <- saemixControl(map=TRUE, fim=TRUE, ll.is=TRUE, displayProgress=FALSE, seed=632545, save = FALSE)
+
+saemix.fit1    <- saemix(saemix.model, saemix.data, saemix.options)
+
+psi <- psi(saemix.fit1)
+sample_cut$theta_saemix <- psi$theta
+sample_cut$delta_saemix <- psi$delta
+```
+
+# Comparison L-M and SAEM
+
+Let's compare values of parameters estimated by L-M and SAEM.
+
+plot of values estimated by L-M
+
+```{r, chunk-plot-lm, echo=FALSE, warning=FALSE}
+p <- ggplot(sample_cut, aes(x=theta_nls, y=delta_nls)) +
+  geom_point(alpha=0.3, size=2) +
+  xlim(-0.01,3) +
+  ylim(00.01,3) +
+  labs(x="Theta", y="Delta")
+
+ggMarginal(p, type="densigram", xparams = list(colour = "black", fill="red"), yparams = list(colour = "black", fill="red"))
+rm(p)
+```
+
+plot of values estimated by SAEM
+
+```{r, chunk-plot-saem, echo=FALSE, warning=FALSE}
+p <- ggplot(sample_cut, aes(x=theta_saemix, y=delta_saemix)) +
+  geom_point(alpha=0.3, size=2) +
+  xlim(0.99,1.13) +
+  ylim(-0.01,0.13) +
+  labs(x="Theta", y="Delta")
+
+ggMarginal(p, type="densigram", xparams = list(colour = "black", fill="red"), yparams = list(colour = "black", fill="red"))
+rm(p)
+```
+
+Plots put on each other:
+
+```{r, chunk-plot-both, echo=FALSE, warning=FALSE}
+ggplot(sample_cut) +
+  geom_point(aes(x=theta_nls, y=delta_nls), alpha=0.3, size=2) +
+  geom_point(aes(x=theta_saemix, y=delta_saemix), alpha=0.3, size=2, colour="red") +
+  xlim(0.5,1.75)+
+  ylim(0,0.5) +
+  labs(x="Theta", y="Delta")
+```
+
+What about correlations (we compare them using sample without outliers so the number of observations is the same)?
+
+Corr(theta_lm, theta_saem):
+
+- pearson: `r cor(sample_cut$theta_nls, sample_cut$theta_saemix, method="pearson")`
+
+- spearman: `r cor(sample_cut$theta_nls, sample_cut$theta_saemix, method="spearman")`
+
+- kendall: `r cor(sample_cut$theta_nls, sample_cut$theta_saemix, method="kendall")`
+
+Corr(delta_lm, delta_saem):
+
+- pearson: `r cor(sample_cut$delta_nls, sample_cut$delta_saemix, method="pearson")`
+
+- spearman: `r cor(sample_cut$delta_nls, sample_cut$delta_saemix, method="spearman")`
+
+- kendall: `r cor(sample_cut$delta_nls, sample_cut$delta_saemix, method="kendall")`
+
+Corr(theta_lm, delta_lm):
+
+- pearson: `r cor(sample_cut$theta_nls, sample_cut$delta_nls, method="pearson")`
+
+- spearman: `r cor(sample_cut$theta_nls, sample_cut$delta_nls, method="spearman")`
+
+- kendall: `r cor(sample_cut$theta_nls, sample_cut$delta_nls, method="kendall")`
+
+Corr(theta_saem, delta_saem):
+
+- pearson: `r cor(sample_cut$theta_saemix, sample_cut$delta_saemix, method="pearson")`
+
+- spearman: `r cor(sample_cut$theta_saemix, sample_cut$delta_saemix, method="spearman")`
+
+- kendall: `r cor(sample_cut$theta_saemix, sample_cut$delta_saemix, method="kendall")`
+
+# Summary
+
+To sum up, we obtained to two sets of estimates.
+
+1. One using the Levenberg–Marquardt algorithm. The advantage of these results
+   is that outliers are included.
+2. Second using the SAEM algorithm. The advantage of these results is that they
+   are less impacted by a single data point.
+
+Given the advantages of respective sets of estimates it seems reasonable to use
+Levenberg–Marquardt algorithm's results for the main analysis and
+SAEM algorithm's for corroboration check.
+
+# Appendix
+
+## A: Remark on math behind Gauss-Newton and Levenberg–Marquardt algorithms
+
+The problem we want to solve is: $minimize_x \ f(x)=\sum^m_{i=1}f_i(x)^2=F(x)^T F(x)$, where $F(x)=(f_1(x), f_2(x), ..., f_m(x))^T$
+
+Note that:
+
+- $\bigtriangledown f(x)=\bigtriangledown F(x) F(x)$
+
+- $\bigtriangledown^2 f(x)=\bigtriangledown F(x) \bigtriangledown f(x)^T + \sum^m_{i=1}f_i(x) \bigtriangledown^2 f_i(x)$
+
+Let $x_*$ be the solution, then $F(x_*)=0$.
+
+Thus, it is reasonable to expect that $F(x) \approx 0$ for $x \approx x_*$.
+
+It implies that: $\bigtriangledown^2 f_i(x) = \bigtriangledown F(x) \bigtriangledown F(x)^T + \sum^m_{i=1}f_i(x) \bigtriangledown^2 f_i(x) \approx \bigtriangledown F(x) \bigtriangledown F(x)^T$.
+
+It means that the Hessian matrix can be found using only 1st derivatives (assuming that model fitts well to data).
+On this idea are based both the Gauss-Newton algorithm and the Levenberg–Marquardt algorithm.
+
+To be more precise, the Gauss-Newton algorithm assumes that the term $\sum^m_{i=1}f_i(x) \bigtriangledown^2 f_i(x)$ is approximately 0. 
+The Levenberg–Marquardt algorithm assumes that it is approximated by $\lambda I$, where $\lambda \geq 0$.
+
+## B: Remark on starting points in G-N algorithm
+
+We stated that some basic ideas for better estimation of starting points were tried.
+Here we describe them.
+
+If the start values are not provided it does a cheap guess and assumes that all parameters are equal to 1.
+
+We can linearize equation and use the OLS to find starting parameters.
+
+$ip=\frac{\theta *75}{1+\delta *SD}$
+
+$\frac{75}{ip}=\frac{1}{\theta}+\frac{\delta}{\theta}*SD$
+
+Let, $y=\frac{1}{ip}$ and $x=\frac{SD}{75}$ and we obtain a linearized form.
+
+```{r, eval=FALSE}
+#select data for the first respondent
+a <- filter(data_long, id==1)
+#optymize using coeff from the linearized equation as a staring point
+a$y <- 75/a$ip
+a$x <- a$sd
+b <- lm(y~x, a)
+theta_start <- as.numeric(1/b$coefficients[1])
+delta_start <- as.numeric(b$coefficients[2]*theta_start)
+
+
+nls(ip ~ (theta*75)/(1+delta*sd), data=a, start = c(theta=theta_start, delta=delta_start))
+
+```
+
+This method failed to find proper staring points in ... cases, but it solved a problem in ... cases where a cheap guess failed.
+Thus, it is not the best way to choose starting points, but it showed that in some cases better starting points are possible to be found.
+Let's try something slightly better.
+We know that typically theta somewhere between 0 and 3, and delta between ...
+So we can evaluate fit for some range of points and choose the best one.
+
+```{r, eval=FALSE}
+N=length(data_wide$id)
+i=1
+
+theta_gn2 <- c(0)
+delta_gn2 <- c(0)
+st1 <- expand.grid(theta = seq(-10, 100, len=30), delta = seq(-1, 20, len=30))
+
+repeat{
+  a <- filter(data_long, id==i)
+  
+  b <- try(nls2(ip ~ (theta*75)/(1+delta*sd), data=a, start = st1,
+     algorithm = "random-search"))
+  b2 <- ifelse(isTRUE(class(b)=="try-error"), 1, 0)
+  theta_start <- ifelse(b2==1, 1, as.numeric(coef(b)[1]))
+  delta_start <- ifelse(b2==1, 1, as.numeric(coef(b)[2]))
+  
+  c <- try(nls(ip ~ (theta*75)/(1+delta*sd), data=a,
+           start=c(theta=theta_start, delta=delta_start)))
+  d=ifelse(isTRUE(class(c)=="try-error"), 1, 0)
+  e <- summary(c)
+  
+  theta_gn2[i]=ifelse(d==1, NA, e$coefficients[1,1])
+  delta_gn2[i]=ifelse(d==1, NA, e$coefficients[2,1])
+
+i=i+1
+if(i>N){
+  break
+}
+}
+
+est_gn2 <- data.frame(data_wide$id, theta_gn2, delta_gn2)
+rm(N,i,a,b,c,d)
+```
+
+Again, no significant improvement.
+
+## C: Remark on assumptions made by the "saemix" package
+
+The construction of SAEM and its implementation by the package saemix is rather complex, so explaining it here has no point (see Comets, et al., (2017) for details).
+However, one thing needs to be emphasized.
+
+The statistical model for observation $y_{ij}$ is: $y_{ij}=f(\psi_i,x_{ij})+g(\psi_i,\sigma,x_{ij})$.
+Where, $f$ represents the structural model, describing the evolution of the process being modeled.
+
+The package saemix assumes that  the individual parameters $\psi_i$ can be modeled parametrically as a function of
+fixed effects $\mu$, individual random effects $\eta_i$, and subject-specific covariates $c_i$. It further assumes that $\eta_i$ follows some distribution. There are four available options determining the distribution of $\psi_i$. It can be normal, log-normal, or it can follow logit or probit transformation.
+
+The assumption on the distribution of $\psi_i$ is important for accurate estimation. However, there exist other distributions that aforementioned ones.
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+N=length(data_wide$id)
+
+#we use the sample without the tail, because it is estimated by the saemix
+fitDist(sample_cut$theta_nls, k=2)
+fitDist(sample_cut$theta_nls, k=3.84)
+ # "BCT", "Box-Cox t"
+fitDist(sample_cut$theta_nls, k=log(N))
+ # "NET", "Normal Exponential t"
+
+fitDist(sample_cut$delta_nls, k=2)
+ # it is the same for k=3.84 and k=log(N)
+ # "PARETO2", "Pareto Type 2"
+```
+
+Thus, we see that neither $\theta$ nor $\delta$ is distributed as it can be assumed in saemix.
+
+```{r, eval=FALSE}
+#out of curiosity, what if we take the whole sample?
+
+fitDist(sample$theta, k=2)
+ # it is the same for k=3.84 and k=log(N)
+ # "SHASH", "Sinh-Arcsinh"
+
+fitDist(sample$delta, k=2)
+fitDist(sample$delta, k=3.84)
+fitDist(sample$delta, k=log(N))
+ # for k=2 it is "ST1", "Skew t (Azzalini type 1)"
+ # for k=3.84 and k=log(N) it is "PARETO2o", "Pareto Type 2"
+```
+
+# References
+
+* Comets, E., Lavenu, A., & Lavielle, M. (2017). Parameter estimation in nonlinear mixed effect models using saemix, an R implementation of the SAEM algorithm. Journal of Statistical Software, 80, 1-41.
+* Leder, J., & Schütz, A. (2018). Dictator game. Encyclopedia of personality and individual differences.
+* Ma, Q., Pei, G., & Jin, J. (2015). What Makes You Generous? The Influence of Rural and Urban Rearing on Social Discounting in China. PLOS ONE, 10(7), e0133078. https://doi.org/10.1371/journal.pone.0133078
+* Ruszczynski, A. (2011). Nonlinear optimization. Princeton university press.
+* Strombach, T., Jin, J., Weber, B., Kenning, P., Shen, Q., Ma, Q., & Kalenscher, T. (2014). Charity begins at home: Cultural differences in social discounting and generosity. Journal of Behavioral Decision Making, 27(3), 235–245.
