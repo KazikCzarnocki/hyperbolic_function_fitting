@@ -482,30 +482,64 @@ If the start values are not provided it does a cheap guess and assumes that all 
 
 We can linearize equation and use the OLS to find starting parameters.
 
-$ip=\frac{\theta *75}{1+\delta *SD}$
+Given that $U(\pi_2)=75$ we get $ip=\frac{\theta *75}{1+\delta *SD}$
 
+Multiplying both sides by $\frac{1+\delta*SD}{\theta*ip}$ we get
 $\frac{75}{ip}=\frac{1}{\theta}+\frac{\delta}{\theta}*SD$
 
-Let, $y=\frac{1}{ip}$ and $x=\frac{SD}{75}$ and we obtain a linearized form.
+Dividing sides by $75$ we get 
+$\frac{1}{\theta}*\frac{1}{75}+\frac{\delta}{\theta}*\frac{SD}{75}=\frac{1}{ip}$
 
-```{r, eval=FALSE}
-#select data for the first respondent
-a <- filter(data_long, id==1)
-#optymize using coeff from the linearized equation as a staring point
-a$y <- 75/a$ip
-a$x <- a$sd
-b <- lm(y~x, a)
-theta_start <- as.numeric(1/b$coefficients[1])
-delta_start <- as.numeric(b$coefficients[2]*theta_start)
+Let, $y=\frac{1}{ip}$, $x_1=\frac{1}{75}$, and $x_2=\frac{SD}{75}$ and we obtain a linearized form
+$y=\frac{1}{\theta}*x_1+\frac{\delta}{\theta}*x_2$
 
+Thus, if we fit this model we can obtain \theta and \delta.
+Alternatively, we can specify an equivalent model with an intercept, but
+for the sake of clarity we focus on an option with two variables.
 
-nls(ip ~ (theta*75)/(1+delta*sd), data=a, start = c(theta=theta_start, delta=delta_start))
+```{r warning=FALSE}
+N=length(data_wide$id)
+i=1
 
+theta_gn2 <- c(0)
+delta_gn2 <- c(0)
+
+repeat{
+  a <- filter(data_long, id==i) %>%
+  mutate(
+    y  = 1/ip,
+    x1 = 1/75,
+    x2 = sd/75
+  )
+  b <- lm(y~0+x1+x2, data=a) #compute the linear problem
+  theta_start <- as.numeric(1/b$coefficients[1]) #calculate starting values for nls()
+  delta_start <- as.numeric(b$coefficients[2]*(1/b$coefficients[1]))
+  c <- try(nls(ip ~ (theta*75)/(1+delta*sd), data=a,
+           start = c(theta=theta_start, delta=delta_start)))
+  d=ifelse(isTRUE(class(c)=="try-error"), 1, 0)
+  e <- summary(c)
+  
+  theta_gn2[i]=ifelse(d==1, NA, e$coefficients[1,1])
+  delta_gn2[i]=ifelse(d==1, NA, e$coefficients[2,1])
+
+i=i+1
+if(i>N){
+  break
+}
+}
+
+est_gn2 <- data.frame(data_wide$id, theta_gn2, delta_gn2)
+rm(N,i,a,b,c,d,e,theta_gn2,delta_gn2)
 ```
-
+Does this method managed to solve the problem with convergence?
 This method failed to find proper staring points in ... cases, but it solved a problem in ... cases where a cheap guess failed.
+
+Are new estimates better than before?
+<compare MSE>
+
 Thus, it is not the best way to choose starting points, but it showed that in some cases better starting points are possible to be found.
-Let's try something slightly better.
+
+Let's try a different approach. <consider deleting it>
 We know that typically theta somewhere between 0 and 3, and delta between ...
 So we can evaluate fit for some range of points and choose the best one.
 
