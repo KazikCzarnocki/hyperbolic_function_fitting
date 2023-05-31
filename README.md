@@ -5,4 +5,4 @@ An example of fitting hyperbolic function at individual level data.
 
 
 The analysis is done in R.
-GitHub detects HTML, because RMarkdown knitted the output as html.
+GitHub detects HTML and PostScript because of RMarkdown knitted output.
